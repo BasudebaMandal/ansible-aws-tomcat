@@ -1,0 +1,3 @@
+---
+epel_rpm_pack_oel6: "epel-release-latest-6.noarch.rpm"
+epel_rpm_pack_oel7: "epel-release-latest-7.noarch.rpm"

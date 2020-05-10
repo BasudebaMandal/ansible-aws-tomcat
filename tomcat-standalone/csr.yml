@@ -1,0 +1,10 @@
+---
+- hosts: all
+  become: true
+  become_method: sudo
+  roles:
+#    - role: customdata
+    - role: csrgenerate
+    
+...
+
