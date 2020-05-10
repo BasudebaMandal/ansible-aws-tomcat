@@ -1,9 +1,9 @@
 ---
-- hosts: tomcat-servers
+- hosts: aws-ec2-servers
 #  remote_user: root
   become: yes
   become_method: sudo
 
   roles:
-    - selinux
+#    - selinux
     - tomcat

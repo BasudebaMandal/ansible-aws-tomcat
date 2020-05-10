@@ -1,54 +1,72 @@
 ---
-#- name: Install Java 1.7
-#  yum: name=java-1.7.0-openjdk state=present
+  - name: Create Java and Tomcat Directory
+    file:
+      path: "/opt/{{ item }}"
+      owner: root
+      group: root
+      mode: 0755
+      recurse: yes
+      state: directory
+    with_items: ["java", "middleware"]
 
-- name: add group "tomcat"
-  group: name=tomcat
+  - name: Add group tomcat
+    group: name={{ tomcat.tomcat_user }}
 
-- name: add user "tomcat"
-  user: name=tomcat group=tomcat home=/opt/tomcat createhome=no
-  become: True
-  become_method: sudo
+  - name: Add user tomcat
+    user: name={{ tomcat.tomcat_user }} group={{ tomcat.tomcat_user }} home={{ tomcat.download_folder }} createhome=yes
+    become: True
+    become_method: sudo
 
-- name: Download Tomcat
-  get_url: url=http://archive.apache.org/dist/tomcat/tomcat-7/v7.0.61/bin/apache-tomcat-7.0.61.tar.gz dest=/opt/apache-tomcat-7.0.61.tar.gz use_proxy=yes
-  environment: 
-   http_proxy: http://proxy.room101.com:8080
-- name: Extract archive
-  command: chdir=/opt /bin/tar xvf /opt/apache-tomcat-7.0.61.tar.gz -C /opt/ creates=/opt/apache-tomcat-7.0.61
+  - name: Download Java
+    command: "wget -q -O {{ java.java_archive }} -c --no-check-certificate --no-cookies --header 'Cookie: oraclelicense=accept-securebackup-cookie' {{ java.download_url }} "
+    register: result
 
-- name: Symlink install directory
-  file: src=/opt/apache-tomcat-7.0.61 path=/opt/tomcat state=link
+  - name: Unpack Java archive
+    command: "tar -zxvf {{ java.java_archive }} -C {{ java.download_folder }}"
+    register: javaresult
 
-- name: Change ownership of Tomcat installation
-  file: path=/opt/tomcat/ owner=tomcat group=tomcat state=directory recurse=yes
+  - name: Symlink install directory
+    file: src={{ java.download_folder }}/{{ javaresult.stdout_lines[0] }} path={{ java.java_home }} state=link
 
-- name: Configure Tomcat server
-  template: src=server.xml dest=/opt/tomcat/conf/
-  notify: restart tomcat
+  - name: Fix Java ownership
+    file: state=directory path={{ java.java_home }} owner=root group=root recurse=yes
 
-- name: Configure Tomcat users
-  template: src=tomcat-users.xml dest=/opt/tomcat/conf/
-  notify: restart tomcat
+  - name: Make Java available for system
+    command: 'alternatives --install "/usr/bin/java" "java" "{{ java.java_home }}/bin/java" 2000'
 
-- name: Install Tomcat init script
-  template: src=tomcat-initscript.j2 dest=/etc/init.d/tomcat mode=0755
+  - name: Clean up Java
+    file: state=absent path={{ java.java_archive }}
 
-- name: Start Tomcat
-  service: name=tomcat state=started enabled=yes
+  - name: Download Tomcat
+    command: "wget -q -O {{ tomcat.tomcat_archive }} --no-check-certificate --no-cookies --header 'Cookie: oraclelicense=accept-securebackup-cookie' {{ tomcat.download_url }} "
 
-#- name: deploy iptables rules
-#  template: src=iptables-save dest=/etc/sysconfig/iptables
-#  when: "ansible_os_family == 'RedHat' and ansible_distribution_major_version == '6'"
-#  notify: restart iptables
+  - name: Unpack Tomcat archive
+    command: "tar -zxvf {{ tomcat.tomcat_archive }} -C {{ tomcat.download_folder }}"
+    register: tomcatresult 
 
-#- name: insert firewalld rule for tomcat http port
-#  firewalld: port={{ http_port }}/tcp permanent=true state=enabled immediate=yes
-#  when: "ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'"
+  - name: Print output
+    debug:
+      var: tomcatresult.stdout_lines[0]
 
-#- name: insert firewalld rule for tomcat https port
-#  firewalld: port={{ https_port }}/tcp permanent=true state=enabled immediate=yes
-#  when: "ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'"
+  - name: Symlink install directory
+    file: src={{ tomcat.download_folder }}/{{ tomcatresult.stdout_lines[0].split('/')[0] }} path={{ tomcat.tomcat_home }} state=link
 
-- name: wait for tomcat to start
-  wait_for: port={{http_port}}
+  - name: Fix Tomcat ownership
+    file: state=directory path={{ tomcat.tomcat_home }} owner={{ tomcat.tomcat_user }} group={{ tomcat.tomcat_user }} recurse=yes
+
+  - name: Clean up Tomcat
+    file: state=absent path={{ tomcat.tomcat_archive }}
+
+  - name: Configure Tomcat server
+    template: src=server.xml dest={{ tomcat.tomcat_confdir }}
+    notify: restart tomcat
+
+  - name: Configure Tomcat users
+    template: src=tomcat-users.xml dest={{ tomcat.tomcat_confdir }} 
+    notify: restart tomcat
+
+  - name: Install Tomcat init script
+    template: src=tomcat-initscript.j2 dest=/etc/init.d/tomcat mode=0755
+
+  - name: Start Tomcat
+    service: name=tomcat state=started enabled=yes
